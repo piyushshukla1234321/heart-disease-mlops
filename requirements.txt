@@ -1,0 +1,26 @@
+# Full environment: data, EDA, training, MLflow, API, tests and notebooks.
+# Target runtime: Python 3.13 (the assignment development environment).
+numpy==2.2.2
+pandas==2.2.3
+scikit-learn==1.6.1
+scipy==1.15.1
+joblib==1.4.2
+matplotlib==3.10.0
+seaborn==0.13.2
+mlflow==2.20.3
+
+# Serving
+fastapi==0.115.6
+uvicorn==0.34.0
+pydantic==2.10.6
+prometheus-client==0.21.1
+
+# Testing / linting
+pytest==8.3.4
+pytest-cov==6.0.0
+httpx==0.28.1
+flake8==7.1.1
+
+# Notebooks
+jupyterlab==4.3.5
+ipykernel==6.29.5

@@ -1,0 +1,11 @@
+# Slim runtime for the Docker image. These model-serving dependencies MUST match
+# the corresponding versions in requirements.txt so the saved sklearn pipeline loads safely.
+numpy==2.2.2
+pandas==2.2.3
+scikit-learn==1.6.1
+scipy==1.15.1
+joblib==1.4.2
+fastapi==0.115.6
+uvicorn==0.34.0
+pydantic==2.10.6
+prometheus-client==0.21.1

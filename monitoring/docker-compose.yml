@@ -1,0 +1,44 @@
+# API + Prometheus + Grafana on your laptop.
+#   cd monitoring && docker compose up -d --build
+# API: http://localhost:8000/docs  Prometheus: http://localhost:9090  Grafana: http://localhost:3000
+services:
+  api:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    image: heart-risk-api:1.0.0
+    container_name: heart-risk-api
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: heart-risk-prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"   # lets Prometheus reach the K8s service too
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: heart-risk-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/heart-risk-api.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    restart: unless-stopped

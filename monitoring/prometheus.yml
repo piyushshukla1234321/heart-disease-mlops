@@ -1,0 +1,22 @@
+global:
+  scrape_interval: 5s
+  evaluation_interval: 5s
+
+scrape_configs:
+  # the API container started by docker compose
+  - job_name: heart-risk-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["heart-risk-api:8000"]
+        labels:
+          environment: docker-compose
+
+  # the Kubernetes LoadBalancer service (Docker Desktop exposes it on localhost:8080).
+  # Shows "down" on the Prometheus Targets page if the K8s deployment is not running.
+  # Note: each scrape lands on one of the 2 pods, so counters can jump between pods.
+  - job_name: heart-risk-api-k8s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["host.docker.internal:8080"]
+        labels:
+          environment: kubernetes

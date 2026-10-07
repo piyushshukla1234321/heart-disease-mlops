@@ -1,0 +1,4 @@
+model,cv_accuracy_mean,cv_accuracy_std,cv_precision_mean,cv_precision_std,cv_recall_mean,cv_recall_std,cv_f1_mean,cv_f1_std,cv_roc_auc_mean,cv_roc_auc_std,test_accuracy,test_precision,test_recall,test_f1,test_roc_auc,best_params
+logistic_regression,0.8552,0.0301,0.8608,0.0754,0.8281,0.0542,0.8404,0.0296,0.9071,0.019,0.8852,0.8182,0.9643,0.8852,0.9589,"{""C"": 1.0, ""class_weight"": ""balanced"", ""penalty"": ""l2""}"
+svm_rbf,0.8347,0.0229,0.8613,0.0679,0.7739,0.066,0.8107,0.0266,0.9044,0.0201,0.8852,0.8387,0.9286,0.8814,0.96,"{""C"": 1.0, ""gamma"": 0.01}"
+random_forest,0.8305,0.0304,0.8391,0.0329,0.7826,0.0893,0.8063,0.0453,0.9003,0.0234,0.8852,0.8387,0.9286,0.8814,0.9589,"{""max_depth"": null, ""min_samples_leaf"": 5, ""n_estimators"": 300}"

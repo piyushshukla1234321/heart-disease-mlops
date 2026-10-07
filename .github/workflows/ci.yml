@@ -1,0 +1,128 @@
+name: CI - lint, test, train, docker
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash   # explicit bash => GitHub adds -eo pipefail, so `cmd | tee log` still fails on error
+
+env:
+  PYTHON_VERSION: "3.13"
+  IMAGE: heart-risk-api:ci
+
+jobs:
+  lint:
+    name: 1. Lint (flake8)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install flake8==7.1.1
+      - name: flake8
+        run: |
+          mkdir -p ci-logs
+          flake8 cardiorisk api tests scripts --count --statistics --tee --output-file=ci-logs/flake8.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lint-report
+          path: ci-logs/
+
+  test:
+    name: 2. Unit tests (pytest)
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install -r requirements.txt
+      - name: pytest
+        run: |
+          mkdir -p ci-logs
+          pytest -v --junitxml=ci-logs/junit.xml \
+                 --cov=cardiorisk --cov=api --cov-report=term-missing \
+                 --cov-report=xml:ci-logs/coverage.xml 2>&1 | tee ci-logs/pytest.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-reports
+          path: ci-logs/
+
+  train:
+    name: 3. Data + EDA + training (MLflow)
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Prepare data (downloads raw UCI data if not already present)
+        run: |
+          mkdir -p ci-logs
+          python -m cardiorisk.data 2>&1 | tee ci-logs/data.log
+      - name: EDA figures
+        run: python -m cardiorisk.eda 2>&1 | tee ci-logs/eda.log
+      - name: Train, track and quality-gate
+        run: python -m cardiorisk.train 2>&1 | tee ci-logs/train.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: model
+          path: |
+            models/model.joblib
+            models/model_metadata.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: training-outputs
+          path: |
+            ci-logs/
+            reports/
+            mlflow.db
+            mlruns/
+
+  docker:
+    name: 4. Docker build + container smoke test
+    needs: train
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: model
+          path: models/
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Build image
+        run: |
+          mkdir -p ci-logs
+          docker build -t "$IMAGE" . 2>&1 | tee ci-logs/docker-build.log
+      - name: Run container
+        run: docker run -d --name api -p 8000:8000 "$IMAGE"
+      - name: Smoke test the running container
+        run: python scripts/smoke_test.py --url http://localhost:8000 --wait 60 2>&1 | tee ci-logs/smoke.log
+      - name: Collect container logs
+        if: always()
+        run: docker logs api > ci-logs/container.log 2>&1 || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docker-logs
+          path: ci-logs/
+      - name: Stop container
+        if: always()
+        run: docker rm -f api || true
