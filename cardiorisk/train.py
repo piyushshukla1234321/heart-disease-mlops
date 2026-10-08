@@ -355,7 +355,8 @@ class QualityGateError(RuntimeError):
 
 # ----------------------------------------------------------- main entry
 def run_training(data_path: Path = C.CLEAN_FILE, min_test_auc: float | None = None,
-                 register: bool = True, track: bool = True, specs: dict | None = None) -> dict:
+                 register: bool = True, track: bool = True, specs: dict | None = None,
+                 n_jobs: int = 2) -> dict:
     """track=False runs pure model development (Task 2) with no MLflow at all.
     specs overrides model_specs() - used by the tests to keep the end-to-end run fast."""
     from cardiorisk.data import load_clean
@@ -394,7 +395,7 @@ def run_training(data_path: Path = C.CLEAN_FILE, min_test_auc: float | None = No
             with mlflow.start_run(run_name=name, nested=True) as child:
                 log.info("Tuning %s over %d candidates ...", name,
                          int(np.prod([len(v) for v in grid.values()])))
-                res = tune_model(name, estimator, grid, X_train, y_train)
+                res = tune_model(name, estimator, grid, X_train, y_train, n_jobs=n_jobs)
                 results[name] = res
                 child_run_ids[name] = child.info.run_id
 
@@ -505,24 +506,54 @@ def run_training(data_path: Path = C.CLEAN_FILE, min_test_auc: float | None = No
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__,
-                                     formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--min-test-auc", type=float, default=None,
-                        help=f"quality gate (default env MIN_TEST_ROC_AUC or "
-                             f"{C.DEFAULT_MIN_TEST_ROC_AUC})")
-    parser.add_argument("--no-register", action="store_true",
-                        help="skip the MLflow Model Registry step")
-    parser.add_argument("--no-tracking", action="store_true",
-                        help="Task 2 only: train, compare, gate and save without MLflow")
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument(
+        "--min-test-auc",
+        type=float,
+        default=None,
+        help=(
+            f"quality gate (default env MIN_TEST_ROC_AUC or "
+            f"{C.DEFAULT_MIN_TEST_ROC_AUC})"
+        ),
+    )
+    parser.add_argument(
+        "--no-register",
+        action="store_true",
+        help="skip the MLflow Model Registry step",
+    )
+    parser.add_argument(
+        "--no-tracking",
+        action="store_true",
+        help="Task 2 only: train, compare, gate and save without MLflow",
+    )
+    parser.add_argument(
+        "--n-jobs",
+        type=int,
+        default=2,
+        help="number of parallel jobs for cross-validation",
+    )
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
     C.REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+
     try:
-        summary = run_training(min_test_auc=args.min_test_auc, register=not args.no_register,
-                               track=not args.no_tracking)
+        summary = run_training(
+            min_test_auc=args.min_test_auc,
+            register=not args.no_register,
+            track=not args.no_tracking,
+            n_jobs=args.n_jobs,
+        )
     except QualityGateError as exc:
         log.error(str(exc))
         sys.exit(1)
+
     with pd.option_context("display.width", 200, "display.max_columns", 30):
         print("\n" + summary["comparison"].drop(columns=["best_params"]).to_string())
     print(f"\nSelected model: {summary['selected_model']}")
