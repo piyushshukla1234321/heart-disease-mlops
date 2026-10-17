@@ -1,207 +1,224 @@
-# Heart Disease Risk — End-to-End MLOps (BITS AIMLCZG523, Assignment 1)
+[README_Prayogshala_updated.md](https://github.com/user-attachments/files/33600237/README_Prayogshala_updated.md)
+# Heart Disease Risk — End-to-End MLOps
 
-A classifier that predicts presence of heart disease from 13 clinical features (UCI Cleveland
-dataset), tracked with MLflow, tested and trained in GitHub Actions, served by FastAPI in Docker,
-deployed to Kubernetes, and monitored with Prometheus + Grafana.
+**BITS Pilani | AIMLCZG523 — MLOps Assignment 1**  
+**Repository:** [piyushshukla1234321/heart-disease-mlops](https://github.com/piyushshukla1234321/heart-disease-mlops)
 
-> Educational project. Not a medical device.
+An end-to-end machine-learning operations project for predicting the presence of heart disease from 13 clinical features in the UCI Cleveland Heart Disease dataset. The project covers data preparation, model comparison and training, experiment tracking, API packaging, Kubernetes deployment, automated checks, and operational monitoring.
 
-## Architecture
+> **Educational project only. Not a medical device and not intended for clinical decision-making.**
+
+## Current demonstrated architecture
+
+The current deployment/evidence environment is **Prayogshala (BITS Pilani) using Minikube**, not Docker Desktop Kubernetes.
 
 ```mermaid
-flowchart LR
-    UCI[(UCI repository)] -->|cardiorisk.data| RAW[data/raw]
-    RAW -->|clean| CLEAN[data/processed/heart_clean.csv]
-    CLEAN -->|cardiorisk.eda| FIG[reports/figures]
-    CLEAN -->|cardiorisk.train<br/>GridSearchCV x3 models| MLF[(MLflow<br/>runs + registry)]
-    MLF --> MODEL[models/model.joblib<br/>+ metadata.json]
-    subgraph CI[GitHub Actions]
-      L[lint] --> T[pytest] --> TR[train + quality gate] --> D[docker build + smoke test]
-    end
-    MODEL --> IMG[Docker image<br/>FastAPI + model]
-    IMG --> K8S[Kubernetes Deployment x2<br/>LoadBalancer :8080]
-    K8S -->|/metrics| PROM[Prometheus] --> GRAF[Grafana dashboard]
-    USER((Client)) -->|POST /predict| K8S
+flowchart TD
+    A[UCI Cleveland dataset] --> B[Data preparation and EDA]
+    B --> C[Feature pipeline and model comparison]
+    C --> D[Training and cross-validation]
+    D --> E[MLflow experiment tracking]
+    D --> F[model.joblib + model_metadata.json]
+    F --> G[FastAPI inference API]
+    G --> H[Docker image: heart-risk-api:1.0.0]
+    H --> I[Kubernetes on Minikube / Prayogshala]
+    G --> J[Prometheus metrics endpoint]
+    I --> J
+    J --> K[Prometheus]
+    K --> L[Grafana dashboard]
+    M[GitHub Actions] --> N[Lint, tests, training and Docker validation]
 ```
 
-## Task-to-file map
+### Runtime components
 
-| Task (marks) | Main files | Command |
-|---|---|---|
-| 1 Data + EDA (5) | `cardiorisk/data.py`, `cardiorisk/eda.py`, `notebooks/01_eda.ipynb` | `python -m cardiorisk.data` then `python -m cardiorisk.eda` |
-| 2 Features + models (8) | `cardiorisk/features.py`, `cardiorisk/train.py` | `python -m cardiorisk.train --no-tracking` (Task 2 alone, no MLflow) |
-| 3 Experiment tracking (5) | `cardiorisk/train.py` (`MlflowTracker`) | `python -m cardiorisk.train`, then `mlflow ui --backend-store-uri sqlite:///mlflow.db` |
-| 4 Packaging (7) | `models/`, `requirements*.txt`, MLflow registry | produced by `python -m cardiorisk.train` |
-| 5 CI/CD + tests (8) | `tests/`, `.github/workflows/ci.yml`, `setup.cfg` | `flake8 ...`, `pytest -v`, `git push` |
-| 6 Container (5) | `api/`, `Dockerfile`, `requirements-api.txt` | `docker build -t heart-risk-api:1.0.0 .` |
-| 7 Kubernetes (7) | `k8s/` | `kubectl apply -f k8s/namespace.yaml` then deployment + service |
-| 8 Monitoring (3) | `api/monitoring.py`, `monitoring/` | `docker compose up -d --build` in `monitoring/` |
-| 9 Documentation (2) | `README.md`, `screenshots/`, report | — |
+- **Training and artifacts:** scikit-learn pipeline; trained artifact at `models/model.joblib` and metadata at `models/model_metadata.json`.
+- **Experiment tracking:** MLflow records model parameters and metrics for training runs.
+- **Serving:** FastAPI exposes prediction, health, model-information and Prometheus metrics endpoints. The API is packaged as `heart-risk-api:1.0.0`.
+- **Deployment:** Kubernetes manifests under `k8s/` deploy the API to the `heart-risk` namespace in Minikube on Prayogshala. The Service is configured as `LoadBalancer`; Minikube's tunnel may be needed to assign an external IP.
+- **Monitoring:** Prometheus and Grafana are run separately using `monitoring/docker-compose.yml`. Prometheus scrapes both the Compose-hosted API and the Kubernetes API when the Kubernetes forwarding target is running. Grafana visualizes model-loaded status, prediction counts, predicted-disease share, error rate, request rate and prediction latency.
+- **CI/CD:** GitHub Actions workflow under `.github/workflows/` runs linting, tests, training and Docker validation. See the repository's Actions tab for the latest run status.
+
+The monitoring stack is separate from the Kubernetes deployment. The Docker Compose API target is a monitoring/demo service; it should not be confused with the API deployed to Minikube.
 
 ## Repository layout
 
+```text
+cardiorisk/             Data, configuration, features, EDA and training package
+api/                    FastAPI app, schemas, metrics and request logging
+data/                   Raw/processed dataset files (some generated during setup)
+models/                 Trained model artifact and metadata
+k8s/                    Kubernetes namespace, deployment, service and ingress manifests
+monitoring/             Docker Compose, Prometheus config and provisioned Grafana dashboard
+notebooks/              EDA, training and inference notebooks
+scripts/                Smoke test, sample request and traffic-generation helpers
+tests/                  Automated tests
+.github/workflows/      GitHub Actions CI workflow
+reports/                Evaluation outputs, CSVs and figures
+screenshots/            Evidence screenshots and screenshot notes
 ```
-cardiorisk/            Python package: config, data, features, eda, train
-api/                   FastAPI app (main.py), request/response schemas, metrics + JSON logging
-tests/                 pytest suite (runs offline on synthetic data shaped like the UCI file)
-notebooks/             01_eda, 02_training, 03_inference (thin wrappers over the package)
-scripts/               smoke_test.py, send_traffic.py, sample_request.json
-k8s/                   namespace, deployment, service (LoadBalancer), optional ingress
-monitoring/            docker-compose with API + Prometheus + Grafana (dashboard provisioned)
-.github/workflows/     ci.yml: lint -> test -> train -> docker
-data/                  downloaded raw + generated cleaned dataset (regenerated by Task 1)
-models/                generated trained pipeline + metadata (created by Tasks 2–4)
-reports/figures/       EDA and model plots (generated)
-screenshots/           evidence for the report (see screenshots/README.md)
-```
 
-## Prerequisites (install once)
+## Prerequisites
 
-| Tool | Why | Check |
-|------|-----|-------|
-| Python **3.13** | everything Python | `python --version` |
-| Git + a GitHub account | repo + Actions | `git --version` |
-| Docker Desktop (Settings → Kubernetes → Enable; this project was verified with the kind-based Docker Desktop cluster) | container + local K8s | `docker version`, `kubectl get nodes` |
-| VS Code (optional) | editor + notebook runner | |
+- Python version compatible with the repository's `PYTHON_VERSION` and dependency pins
+- Git
+- Docker Engine / Docker Compose for the monitoring stack and image build
+- Minikube and its bundled `kubectl` command for the demonstrated Prayogshala Kubernetes workflow
+- MLflow for experiment tracking
 
-Minikube works instead of Docker Desktop's Kubernetes; differences are noted below.
+Commands below assume a Linux shell and are run from the repository root unless indicated otherwise. On Prayogshala, use `minikube kubectl -- ...` if standalone `kubectl` is not installed.
 
-## Step-by-step (all commands from the repository root)
+## Reproduce the ML workflow
 
-### 1. Environment
+### 1. Set up Python
+
 ```bash
+python --version
 python -m venv .venv
-# Windows PowerShell:   .venv\Scripts\Activate.ps1
-# macOS / Linux:        source .venv/bin/activate
-pip install --upgrade pip
+source .venv/bin/activate
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-### 2. Data + EDA (Task 1)
-```bash
-python -m cardiorisk.data      # downloads data/raw/processed.cleveland.data, writes data/processed/heart_clean.csv
-python -m cardiorisk.eda       # writes reports/figures/eda_*.png
-```
-Or open `notebooks/01_eda.ipynb` (`jupyter lab`, or VS Code) and Run All.
-If the download is blocked, download `processed.cleveland.data` manually from the
-[UCI Heart Disease page](https://archive.ics.uci.edu/dataset/45/heart+disease) and put it in `data/raw/`.
+### 2. Prepare data and run EDA
 
-### 3. Train + track (Tasks 2–4)
+```bash
+python -m cardiorisk.data
+python -m cardiorisk.eda
+```
+
+The data command downloads/prepares the UCI Cleveland data and writes the cleaned dataset. EDA outputs are written under `reports/figures/`. If the source download is unavailable, follow the dataset instructions in `cardiorisk/data.py` and place the raw file in the expected `data/raw/` location.
+
+### 3. Train and track experiments
+
 ```bash
 python -m cardiorisk.train
-mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000    # open http://127.0.0.1:5000
 ```
-Training prints a comparison table, logs 47 MLflow runs (1 session, 3 model families,
-43 grid candidates) plus the EDA figures, registers the winner as `heart-disease-risk-classifier`, and writes
-`models/model.joblib` + `models/model_metadata.json`. It exits with code 1 if the selected
-model's test ROC-AUC is below the configured quality gate (default 0.80; use `--min-test-auc` or env `MIN_TEST_ROC_AUC` to change).
 
-To show Task 2 on its own, run `python -m cardiorisk.train --no-tracking`: same training,
-comparison, quality gate and saved model, with no MLflow involved (it works even without MLflow installed).
+This runs model comparison/training, logs experiment information to MLflow, and writes the trained model and metadata to `models/`. To run training without MLflow tracking, use:
 
-### 4. Tests + lint (Task 5, locally)
+```bash
+python -m cardiorisk.train --no-tracking
+```
+
+Start the MLflow UI from the repository root if you want to inspect runs:
+
+```bash
+mlflow ui --backend-store-uri sqlite:///mlflow.db --port 5000
+```
+
+Open `http://localhost:5000`. Use the run metrics and artifacts shown in MLflow as the source of truth for the run being discussed; metrics can differ between runs if the data, configuration or code changes.
+
+### 4. Run tests and lint
+
 ```bash
 flake8 cardiorisk api tests scripts
 pytest -v
 ```
 
-### 5. Run the API without Docker (quick check)
-```bash
-uvicorn api.main:app --port 8000
-# new terminal:
-python scripts/smoke_test.py
-```
-Swagger UI: http://localhost:8000/docs
+### 5. Run the API locally (optional smoke test)
 
-### 6. Docker (Task 6)
 ```bash
+uvicorn api.main:app --host 0.0.0.0 --port 8000
+```
+
+In another terminal, run:
+
+```bash
+python scripts/smoke_test.py --url http://localhost:8000
+```
+
+API documentation is available at `http://localhost:8000/docs`.
+
+## Deploy to Kubernetes on Prayogshala (Minikube)
+
+Run from the repository root. Ensure Minikube is started and the image is available to the cluster.
+
+```bash
+minikube start
+# Build the image if it is not already available locally:
 docker build -t heart-risk-api:1.0.0 .
-docker run -d --name heart-api -p 8000:8000 heart-risk-api:1.0.0
-python scripts/smoke_test.py
-docker logs heart-api              # JSON request logs
-docker rm -f heart-api             # stop before step 7/8 to free port 8000
+# Load the local image into Minikube:
+minikube image load heart-risk-api:1.0.0
+# Apply the manifests:
+minikube kubectl -- apply -f k8s/namespace.yaml
+minikube kubectl -- apply -f k8s/deployment.yaml
+minikube kubectl -- apply -f k8s/service.yaml
+# Wait for the deployment:
+minikube kubectl -- rollout status deployment/heart-risk-api -n heart-risk
+minikube kubectl -- get pods -n heart-risk
 ```
-Example request. On Windows PowerShell type `curl.exe` (plain `curl` is an alias for a different
-command there); the quotes around `@scripts/...` are required in PowerShell.
+
+The Service is configured as `LoadBalancer`. If an external IP is required, run the following in a **separate terminal and leave it running**:
+
 ```bash
-curl -X POST http://localhost:8000/predict -H "Content-Type: application/json" -d "@scripts/sample_request.json"
+minikube tunnel
 ```
 
-### 7. Kubernetes (Task 7)
-Docker Desktop's Kubernetes can use the locally built image directly.
+Use the external IP and Service port shown by Kubernetes to call the API. The `/health` endpoint should return HTTP 200 when the model is loaded. Other useful endpoints are `/live`, `/model-info`, `/predict`, and `/metrics`.
+
+If Prayogshala restarts, the Minikube cluster and foreground processes may need to be started again. Start Minikube first, then apply the manifests if the Kubernetes resources are not present, and restart the tunnel/port-forward processes required by the current monitoring configuration. Do not assume an old terminal process survived a restart.
+
+## Monitoring with Prometheus and Grafana
+
+The monitoring stack is separate from Kubernetes and is defined in `monitoring/docker-compose.yml`.
+
 ```bash
-kubectl config use-context docker-desktop
-kubectl apply -f k8s/namespace.yaml
-kubectl apply -f k8s/deployment.yaml -f k8s/service.yaml
-kubectl rollout status deployment/heart-risk-api -n heart-risk
-kubectl get all -n heart-risk
-python scripts/smoke_test.py --url http://localhost:8080
-kubectl logs -n heart-risk -l app=heart-risk-api --tail=20
+docker compose -f monitoring/docker-compose.yml up -d
 ```
-**Minikube instead:** `minikube start`, then `minikube image load heart-risk-api:1.0.0`, apply the
-same manifests, and run `minikube tunnel` in a separate terminal so the LoadBalancer gets an IP
-(or use `minikube service heart-risk-api -n heart-risk --url`).
 
-### 8. Monitoring (Task 8)
+Open:
+
+- Prometheus targets: `http://localhost:9090/targets`
+- Grafana: `http://localhost:3000`
+
+The provisioned dashboard is named **Heart Risk API**. Prometheus should show the Compose API target as UP. The Kubernetes target is UP only while the Kubernetes API is reachable through the host port/forward configured in `monitoring/prometheus.yml`; if it is DOWN, check that the relevant Minikube port-forward is running and that the configured target port matches it.
+
+Generate additional API traffic if desired:
+
 ```bash
-cd monitoring
-docker compose up -d --build
-cd ..
-python scripts/send_traffic.py --n 300
+python scripts/send_traffic.py --n 30
 ```
-- Prometheus targets: http://localhost:9090/targets (`heart-risk-api` should be UP;
-  `heart-risk-api-k8s` is UP only while the Kubernetes deployment from step 7 is running)
-- Grafana: http://localhost:3000 (admin / admin) → dashboard "Heart Risk API"
 
-Stop with `docker compose -f monitoring/docker-compose.yml down`.
+Stop the monitoring stack with:
 
-### 9. CI/CD (Task 5)
-Push to GitHub. `.github/workflows/ci.yml` runs on every push/PR to `main`:
-1. **lint** – flake8 (fails the pipeline on style/syntax errors)
-2. **test** – pytest + coverage, JUnit XML uploaded
-3. **train** – data → EDA → training with quality gate; model, MLflow store, figures and logs uploaded
-4. **docker** – builds the image with the CI-trained model, runs it, smoke-tests `/predict`, uploads container logs
+```bash
+docker compose -f monitoring/docker-compose.yml down
+```
 
-Each job uploads its logs as artifacts (`if: always()`, so logs exist even when a job fails).
+## GitHub Actions
 
-## API reference
+The workflow in `.github/workflows/` runs on pushes and pull requests to `main`. It performs code-quality checks and tests, runs the training workflow, and validates the Docker image/API. The repository's Actions page is the authoritative place to verify the latest run result and inspect logs/artifacts.
 
-| Method | Path | Purpose |
-|--------|------|---------|
-| POST | `/predict` | one patient → prediction, P(disease), confidence, risk band, model version |
-| POST | `/predict/batch` | `{"instances": [...]}` up to 100 patients |
-| GET | `/health` | readiness: 200 only when a model is loaded (K8s readinessProbe) |
-| GET | `/live` | liveness (K8s livenessProbe) |
-| GET | `/model-info` | training metadata of the loaded model |
-| GET | `/metrics` | Prometheus metrics |
+## API endpoints
 
-Invalid input (out-of-range values, unknown codes, missing or extra fields) returns HTTP 422.
-Every response carries an `X-Request-ID` header that also appears in the JSON logs.
+| Method | Endpoint | Purpose |
+|---|---|---|
+| `POST` | `/predict` | Predict for one patient |
+| `POST` | `/predict/batch` | Batch predictions |
+| `GET` | `/health` | Readiness check; confirms that the model is loaded |
+| `GET` | `/live` | Liveness check |
+| `GET` | `/model-info` | Metadata for the loaded model |
+| `GET` | `/metrics` | Prometheus metrics |
+| `GET` | `/docs` | Interactive API documentation |
 
-## Key design decisions
-- **Imputation inside the pipeline, not in the cleaned CSV** – learned on training rows only
-  (no leakage) and applied identically when serving.
-- **One config module** (`cardiorisk/config.py`) defines features and valid ranges for both
-  cleaning and API validation, so training and serving cannot drift apart.
-- **Model selection on CV ROC-AUC, not on the test set** – the test split is touched once, for reporting.
-- **Threshold metrics use P(disease) ≥ 0.5 everywhere** (CV, test, API). sklearn's default scorers
-  use `predict()`, which for an SVM with `probability=True` is a different rule.
-- **Permutation importance** on raw features, so the explanation plots are comparable across
-  LR, RF and SVM.
-- **Quality gate** in training stops CI if model quality regresses.
+Input validation errors return HTTP 422. Responses include an `X-Request-ID` header; request logging uses the request ID to correlate API activity.
+
+## Design and reproducibility notes
+
+- Missing values are handled inside the scikit-learn pipeline so imputation is learned from training data rather than globally from the dataset.
+- Feature definitions and valid ranges are centralized in `cardiorisk/config.py` for consistency between data preparation and API validation.
+- Model selection uses cross-validation metrics rather than selecting on the held-out test set.
+- The repository contains a trained model artifact and metadata for deployment without retraining. Re-running the data and training steps can regenerate artifacts; results depend on the checked-out code, dependencies, data and configuration.
+- Do not treat example metrics or a dashboard's current counters as permanent benchmark results. Use the current report/MLflow run for exact evaluation figures.
 
 ## Troubleshooting
-- `docker build` fails at `COPY models/...` → run training first (step 3).
-- Port 5000 busy on macOS (AirPlay) → `mlflow ui ... --port 5001`.
-- PowerShell refuses to activate the venv → `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
-- K8s pods `ErrImagePull` / `ImagePullBackOff` → the cluster cannot see your local image.
-  Docker Desktop: this project was verified with the kind-based Kubernetes cluster. The local image is loaded into the cluster's containerd `k8s.io` image store before deployment.
-  Minikube: `minikube image load heart-risk-api:1.0.0`.
-- `EXTERNAL-IP <pending>` on Minikube → `minikube tunnel` must be running.
 
+- **ImagePullBackOff / ErrImagePull:** make sure the image exists locally and has been loaded into Minikube with `minikube image load heart-risk-api:1.0.0`.
+- **LoadBalancer external IP remains pending:** start `minikube tunnel` in a separate terminal and keep it running.
+- **Kubernetes Prometheus target is DOWN:** ensure the API deployment is running and the port-forward configured by `monitoring/prometheus.yml` is active; the configured target port and the forwarded port must match.
+- **MLflow port 5000 is busy:** use another port, for example `--port 5001`.
+- **Docker build cannot find model artifacts:** run the training workflow first or confirm that `models/model.joblib` and `models/model_metadata.json` are present.
 
-## Reproducibility note
+## License and intended use
 
-The repository includes the current trained model artifact (`models/model.joblib`) and metadata for immediate deployment and reproducibility. The model can also be regenerated from scratch: a fresh clone can run Task 1 to acquire and clean the UCI Cleveland data, then Tasks 2–4 to train, track, and package a new model. The same top-level dependency pins and Python 3.13 target are used locally, in GitHub Actions, and in the Docker image.
-
-The data cleaning step deliberately retains missing feature cells rather than filling them globally. Imputation is learned inside the scikit-learn pipeline from training folds only, preventing test-set leakage.
+This is an educational assignment repository. Unless a license file is added, no open-source license is granted by this README. The model is for learning and demonstration only, not medical advice or clinical use.
